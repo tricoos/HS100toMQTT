@@ -1,0 +1,16 @@
+version: '3'
+
+services:
+  hs100tomqtt:
+    container_name: hs100tomqtt
+    hostname: hs100tomqtt
+    build: .
+    environment:
+      - HS100TOMQTT_MQTT_URL=mqtt://127.0.0.1
+      - HS100TOMQTT_NAME=hs100
+      - HS100TOMQTT_POLLING_INTERVAL=30
+      - HS100TOMQTT_VERBOSITY=info
+    volumes:
+      - ./code:/code
+    network_mode: host
+    restart: "unless-stopped"
