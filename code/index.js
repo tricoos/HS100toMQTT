@@ -4,7 +4,6 @@ const MqttSmarthome = require("mqtt-smarthome-connect");
 const Hs100Api      = require('tplink-smarthome-api');
 const log           = require('yalm');
 const shortid       = require('shortid');
-const Yatl          = require('yetanothertimerlibrary');
 const fs            = require('fs');
 
 const pkg    = require('./package.json');
@@ -91,14 +90,13 @@ log.setLevel(config.verbosity);
 log.info(pkg.name + ' ' + pkg.version + ' starting');
 log.debug("loaded config: ", config);
 
-// TODO: What was this supposed to be used for?
 if (typeof config.devices === 'string') {
     config.devices.split(" ").forEach((ip) => {
         devices.push({"host": ip, "port": 9999});
     });
 }
 
-const deviceTimer = {};
+const deviceTimers      = {};
 const pollingIntervalMs = config.pollingInterval * 1000;
 
 /***********************/
@@ -139,16 +137,25 @@ client.on('device-new', (device) => {
         if (typeof message === 'boolean') {
             device.setPowerState(message);
         }
-        deviceTimer[device.deviceId].exec();
+
+        // Execute timer function
+        if (deviceTimers[device.deviceId]) {
+            deviceTimers[device.deviceId].fn();
+        }
     });
 
-    // Get device info immediately
-    getHandleDeviceInfo(device);
-
     // ...and then in the defined interval
-    deviceTimer[device.deviceId] = new Yatl.Timer(() => {
-        getHandleDeviceInfo(device);
-    }).start(pollingIntervalMs);
+    if (deviceTimers[device.deviceId]) {
+        clearInterval(deviceTimers[device.deviceId].timer);
+    }
+    deviceTimers[device.deviceId] = {
+        fn   : function () {
+            log.debug('----------------------------------------------------------', device.deviceId);
+            getHandleDeviceInfo(device)
+        },
+        timer: null
+    };
+    deviceTimers[device.deviceId].timer = setInterval(deviceTimers[device.deviceId].fn, pollingIntervalMs);
 });
 
 /************************/
@@ -157,7 +164,12 @@ client.on('device-new', (device) => {
 client.on('device-online', (device) => {
     log.debug('hs100 device-online callback', device.name);
     mqtt.publish(config.name + "/maintenance/" + getDeviceName(device.deviceId) + "/online", true);
-    deviceTimer[device.deviceId].start(pollingIntervalMs);
+    if (deviceTimers[device.deviceId]) {
+        if (deviceTimers[device.deviceId].timer) {
+            clearInterval(deviceTimers[device.deviceId].timer);
+        }
+        deviceTimers[device.deviceId].timer = setInterval(deviceTimers[device.deviceId].fn, pollingIntervalMs);
+    }
 });
 
 /*************************/
@@ -166,7 +178,9 @@ client.on('device-online', (device) => {
 client.on('device-offline', (device) => {
     log.warn('hs100 device-offline callback', device.name);
     mqtt.publish(config.name + "/maintenance/" + getDeviceName(device.deviceId) + "/online", false);
-    deviceTimer[device.deviceId].stop();
+    if (deviceTimers[device.deviceId] && deviceTimers[device.deviceId].timer) {
+        clearInterval(deviceTimers[device.deviceId].timer);
+    }
 });
 
 // Start discovery
