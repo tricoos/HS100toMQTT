@@ -59,4 +59,9 @@ typings/
 docker-compose.yml
 code/devices.json
 
+.idea
+.vs
+.vscode
+code/package-lock.json
+
 
