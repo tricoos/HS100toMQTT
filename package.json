@@ -32,6 +32,8 @@
         "mqtt",
         "smarthome",
         "hs100",
-        "hs110"
+        "hs110",
+        "tplink",
+        "tp-link"
     ]
 }

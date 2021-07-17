@@ -8,20 +8,34 @@
     hs100/info/<DEVICE_ID> -> full and detailed device info
 
 	hs100/status/<DEVICE_ID>    -> JSON: {"val":false,"power":0,"voltage":230.68353,"current":0.012407}
-	hs100/set   /<DEVICE_ID>    <- bool
+	hs100/set   /<DEVICE_ID>    <- "bool", meaning a text "true" or "false" in the MQTT payload 
 
 (Spaces here are only for formatting, the actual topics won't have them.)
 
-`info` contains the raw JSON data from `tplink-smarthome-api` and `device` contains the device data.
+`info` contains the raw JSON data from `tplink-smarthome-api` and `device` contains the device data. It is only emitted on the second
+loop of the `HS100TOMQTT_POLLING_INTERVAL` currently.
 
 ## Configuration
 
+### Setup
 Copy the `docker-compose.yml.sample` to `docker-compose.yml` and modify it so that it suites your needs. The environment variables probably have to be changed:
 
 * `HS100TOMQTT_MQTT_URL` The URL for your MQTT server connection (credentials are not supported)
 * `HS100TOMQTT_NAME` The name and prefix for the MQTT topics, prefix can also contain a slash, e.g. `tplink/hs110`
 * `HS100TOMQTT_POLLING_INTERVAL` The polling interval in seconds
 * `HS100TOMQTT_VERBOSITY` Output verbosity - one of `error`, `warn`, `info`, `debug`
+
+### Human-Readable Device Names
+
+By default the script uses the original 40-character device names like `ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABC2` which are included
+in all MQTT topics both issued and for setting the device status.
+
+To use human-readable device names simply copy the file `code/devices.json.sample` to `code/devices.json` and enter the mappings there.
+
+_Please note:_ If you do this you also have to use these specified names for setting values - you can no longer use the original device ids
+*if* you have specified a name in the device configuration. If you haven't specified a name for a device you have to use the device id instead for setting the value.
+
+After changing any of these values you have to restart the container by executing `docker restart {container name}`.
 
 ## Usage
 
