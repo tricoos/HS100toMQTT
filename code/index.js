@@ -33,25 +33,6 @@ const config = require('yargs')
     .help('help')
     .argv;
 
-// Read optional device config for human-readable names instead of the device ids
-let deviceConfig = {};
-if (fs.existsSync(__dirname + '/devices.json')) {
-    deviceConfig = require(__dirname + '/devices.json');
-}
-
-const devices = [];
-log.setLevel(config.verbosity);
-
-log.info(pkg.name + ' ' + pkg.version + ' starting');
-log.debug("loaded config: ", config);
-if (typeof config.devices === 'string') {
-    config.devices.split(" ").forEach((ip) => {
-        devices.push({"host": ip, "port": 9999});
-    });
-}
-
-const deviceTimer = {};
-
 /**
  * @param deviceId
  * @returns {null|*}
@@ -76,6 +57,53 @@ function getDeviceName(deviceId) {
     return deviceId;
 }
 
+/**
+ * @param device
+ */
+function getHandleDeviceInfo(device) {
+    device.getInfo().then(info => {
+
+        let message     = {};
+        message.val     = info.sysInfo.relay_state === 1;
+        message.power   = info.emeter.realtime.power; // Current also returns values when it is off but no power will be reported then
+        message.voltage = info.emeter.realtime.voltage;
+        message.current = info.emeter.realtime.current;
+        message.energy  = info.emeter.realtime.energy;
+
+        // Publish up-to-date device info - raw JSON from tplink-smarthome-api plus device info
+        info.host = device.host;
+        mqtt.publish(config.name + "/info/" + getDeviceName(device.deviceId), info); //{'info': info, 'device': device});
+
+        mqtt.publish(config.name + "/status/" + getDeviceName(device.deviceId), message);
+    }).catch((err) => {
+        log.error(err);
+    });
+}
+
+// Read optional device config for human-readable names instead of the device ids
+let deviceConfig = {};
+if (fs.existsSync(__dirname + '/devices.json')) {
+    deviceConfig = require(__dirname + '/devices.json');
+}
+
+const devices = [];
+log.setLevel(config.verbosity);
+log.info(pkg.name + ' ' + pkg.version + ' starting');
+log.debug("loaded config: ", config);
+
+// TODO: What was this supposed to be used for?
+if (typeof config.devices === 'string') {
+    config.devices.split(" ").forEach((ip) => {
+        devices.push({"host": ip, "port": 9999});
+    });
+}
+
+const deviceTimer = {};
+const pollingIntervalMs = config.pollingInterval * 1000;
+
+/***********************/
+/*** CONNECT TO MQTT ***/
+/***********************/
 log.info('mqtt trying to connect', config.mqttUrl);
 const mqtt = new MqttSmarthome(config.mqttUrl, {
     logger  : log,
@@ -84,6 +112,9 @@ const mqtt = new MqttSmarthome(config.mqttUrl, {
 });
 mqtt.connect();
 
+/**********************/
+/*** MQTT CONNECTED ***/
+/**********************/
 mqtt.on('connect', () => {
     log.info('mqtt connected', config.mqttUrl);
     mqtt.publish(config.name + '/maintenance/_bridge/online', true, {retain: true});
@@ -91,6 +122,9 @@ mqtt.on('connect', () => {
 
 const client = new Hs100Api.Client({logLevel: config.verbosity, logger: log});
 
+/************************/
+/*** NEW DEVICE FOUND ***/
+/************************/
 client.on('device-new', (device) => {
     log.info('hs100 device-new', device.model, device.host, device.deviceId, device.name);
     mqtt.publish(config.name + "/maintenance/" + getDeviceName(device.deviceId) + "/online", true);
@@ -108,49 +142,34 @@ client.on('device-new', (device) => {
         deviceTimer[device.deviceId].exec();
     });
 
+    // Get device info immediately
+    getHandleDeviceInfo(device);
+
+    // ...and then in the defined interval
     deviceTimer[device.deviceId] = new Yatl.Timer(() => {
-        device.getInfo().then(info => {
-
-            // Define the power type (apparent power vs. effective power) depending on device support
-            let power     = null;
-            let powerType = 'effective';
-            if (typeof info.emeter.realtime.power == 'undefined' || (info.emeter.realtime.power === 0)) {
-                // Calculate it!
-                power     = info.emeter.realtime.voltage * info.emeter.realtime.current;
-                powerType = 'apparent';
-            } else {
-                power = info.emeter.realtime.power;
-            }
-
-            let message       = {};
-            message.val       = info.sysInfo.relay_state === 1;
-            message.power     = power;
-            message.powerType = powerType;
-            message.voltage   = info.emeter.realtime.voltage;
-            message.current   = info.emeter.realtime.current;
-            message.energy    = info.emeter.realtime.energy;
-
-            // Publish up-to-date device info - raw JSON from tplink-smarthome-api plus device info
-            info.host = device.host;
-            mqtt.publish(config.name + "/info/" + getDeviceName(device.deviceId), info); //{'info': info, 'device': device});
-
-            mqtt.publish(config.name + "/status/" + getDeviceName(device.deviceId), message);
-        }).catch((err) => {
-            log.error(err);
-        });
-    }).start(config.pollingInterval * 1000);
+        getHandleDeviceInfo(device);
+    }).start(pollingIntervalMs);
 });
+
+/************************/
+/*** DEVICE IS ONLINE ***/
+/************************/
 client.on('device-online', (device) => {
     log.debug('hs100 device-online callback', device.name);
     mqtt.publish(config.name + "/maintenance/" + getDeviceName(device.deviceId) + "/online", true);
-    deviceTimer[device.deviceId].start(config.pollingInterval * 1000);
+    deviceTimer[device.deviceId].start(pollingIntervalMs);
 });
+
+/*************************/
+/*** DEVICE IS OFFLINE ***/
+/*************************/
 client.on('device-offline', (device) => {
     log.warn('hs100 device-offline callback', device.name);
     mqtt.publish(config.name + "/maintenance/" + getDeviceName(device.deviceId) + "/online", false);
     deviceTimer[device.deviceId].stop();
 });
 
+// Start discovery
 log.info('Starting Device Discovery');
 client.startDiscovery(
     {
