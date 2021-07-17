@@ -114,7 +114,7 @@ client.on('device-new', (device) => {
             // Define the power type (apparent power vs. effective power) depending on device support
             let power     = null;
             let powerType = 'effective';
-            if (typeof info.emeter.realtime.power == 'undefined') {
+            if (typeof info.emeter.realtime.power == 'undefined' || (info.emeter.realtime.power === 0)) {
                 // Calculate it!
                 power     = info.emeter.realtime.voltage * info.emeter.realtime.current;
                 powerType = 'apparent';
