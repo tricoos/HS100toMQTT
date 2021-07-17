@@ -148,7 +148,7 @@ client.on('device-new', (device) => {
     if (deviceTimers[device.deviceId]) {
         clearInterval(deviceTimers[device.deviceId].timer);
     }
-    deviceTimers[device.deviceId] = {
+    deviceTimers[device.deviceId]       = {
         fn   : function () {
             log.debug('----------------------------------------------------------', device.deviceId);
             getHandleDeviceInfo(device)
@@ -165,10 +165,12 @@ client.on('device-online', (device) => {
     log.debug('hs100 device-online callback', device.name);
     mqtt.publish(config.name + "/maintenance/" + getDeviceName(device.deviceId) + "/online", true);
     if (deviceTimers[device.deviceId]) {
-        if (deviceTimers[device.deviceId].timer) {
-            clearInterval(deviceTimers[device.deviceId].timer);
+        if (!deviceTimers[device.deviceId].timer) {
+            deviceTimers[device.deviceId].timer = setInterval(deviceTimers[device.deviceId].fn, pollingIntervalMs);
         }
-        deviceTimers[device.deviceId].timer = setInterval(deviceTimers[device.deviceId].fn, pollingIntervalMs);
+
+        // As device-online is reported every 10 seconds of a device is available this will also report the output here
+        deviceTimers[device.deviceId].fn();
     }
 });
 

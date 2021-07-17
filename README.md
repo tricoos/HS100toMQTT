@@ -25,6 +25,9 @@ Copy the `docker-compose.yml.sample` to `docker-compose.yml` and modify it so th
 * `HS100TOMQTT_POLLING_INTERVAL` The polling interval in seconds
 * `HS100TOMQTT_VERBOSITY` Output verbosity - one of `error`, `warn`, `info`, `debug`
 
+_Please note_: Currently the polling interval is used in addition to the default 10-second interval of the tplink-smarthome-api so you will
+currently get a message every 10 seconds at least.
+
 ### Human-Readable Device Names
 
 By default the script uses the original 40-character device names like `ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABC2` which are included
